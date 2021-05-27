@@ -1,4 +1,4 @@
-FROM ubuntu:latest
+FROM ubuntu:latest as main
 LABEL MAINTAINER="Troy Kinsella <troy.kinsella@gmail.com>"
 
 COPY assets/* /opt/resource/
@@ -19,3 +19,13 @@ RUN set -eux; \
     apt-get remove -y lsb-release; \
     apt-get clean all; \
     rm -rf /var/lib/apt/lists/*;
+
+FROM main as testing
+
+RUN set -eux; \
+    export DEBIAN_FRONTEND=noninteractive; \
+    apt-get update -y; \
+    apt-get install -y shellcheck; \
+    shellcheck -eSC2155 /opt/resource/*;
+
+FROM main

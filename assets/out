@@ -22,25 +22,45 @@ require_attr() {
   echo "$val"
 }
 
+find_job_name() {
+  local job_name="$(jq -r '.params.job_name // ""' < "$payload")"
+  if [[ -z $job_name ]]; then
+    local job_file="$(jq -r '.params.job_file // ""' < "$payload")"
+    test -n "$job_file" || { echo "must supply job_name or job_file parameter" >&2; exit 1; }
+    job_name=$(sed -n 's/^.*job\s*"\(\S*\)".*$/\1/p' "$job_file")
+    test -n "$job_name" || { echo "unable to extract job name from job file: ${job_file}" >&2; exit 1; }
+  fi
+  echo "$job_name"
+}
+
 do_job_plan() {
   local job_file="$1"
-  nomad job plan "$job_file"
+  (
+    set -x
+    nomad job plan "$job_file"
+  )
 }
 
 do_job_run() {
   local job_file="$1"
-  nomad job run "$job_file"
+  (
+    set -x
+    nomad job run "$job_file"
+  )
   await_job_status "$job_name" running
 }
 
 do_job_stop() {
   local job_name="$1"
-  nomad job stop "$job_name"
+  (
+    set -x
+    nomad job stop "$job_name"
+  )
 }
 
 query_job_status() {
   local job_name="$1"
-  nomad job status "$job_name" | egrep '^Status' | awk '{print $NF}'
+  nomad job status "$job_name" | grep -E '^Status' | awk '{print $NF}'
 }
 
 await_job_status() {
@@ -52,8 +72,8 @@ await_job_status() {
   echo "Awaiting $job_name status: $status..."
 
   local success="nope"
-  for i in {1..$attempts}; do
-    if [[ $(query_job_status "$job_name") == $status ]]; then
+  for (( i=1; i<=attempts; i++ )); do
+    if [[ $(query_job_status "$job_name") == "$status" ]]; then
       success="yep"
       break
     fi
@@ -64,6 +84,8 @@ await_job_status() {
     echo "Timed out waiting for $status status" >&2
     nomad job status "$job_name"
     exit 1
+  else
+    echo "Job $job_name status is $status!"
   fi
 }
 
@@ -71,11 +93,13 @@ export NOMAD_ADDR="$(require_attr source address)"
 
 nomad_region=$(jq -r '.source.region // ""' < "$payload")
 if [[ -n $nomad_region ]]; then
+  echo "Nomad region: $nomad_region"
   export NOMAD_REGION="$nomad_region"
 fi
 
 namespace=$(jq -r '.source.namespace // ""' < "$payload")
 if [[ -n $namespace ]]; then
+  echo "Nomad namespace: $namespace"
   export NOMAD_NAMESPACE="$namespace"
 fi
 
@@ -88,28 +112,37 @@ dir="$(require_attr params dir)"
 job_stop="$(jq -r '.params.job_stop // ""' < "$payload")"
 job_plan="$(jq -r '.params.job_plan // ""' < "$payload")"
 job_run="$(jq -r '.params.job_run // ""' < "$payload")"
-job_name="$(require_attr params job_name)"
 
 cd "$source/$dir"
 
 nomad --version
+echo
 
-if [[ -n "$job_stop" ]]; then
+job_name="$(find_job_name)"
+echo "Job name: $job_name"
+
+if [[ $job_stop == true ]]; then
   do_job_stop "$job_name"
-elif [[ -n "$job_plan" ]]; then
+elif [[ $job_plan == true ]]; then
   job_file="$(require_attr params job_file)"
   do_job_plan "$job_file"
-elif [[ -n "$job_run" ]]; then
+elif [[ $job_run == true ]]; then
   job_file="$(require_attr params job_file)"
   do_job_run "$job_file"
 else
-  echo "must supply at least one param: job_stop, job_plan, job_run" >&2
+  echo "must supply/enable at least one param: job_stop, job_plan, job_run" >&2
   exit 1
 fi
 
+echo
 (
   set -x
   nomad job status "$job_name"
+)
+
+echo
+(
+  set -x
   nomad job status
 )
 
