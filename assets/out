@@ -84,12 +84,13 @@ if [[ -n $token ]]; then
   export NOMAD_TOKEN="$token"
 fi
 
+dir="$(require_attr params dir)"
 job_stop="$(jq -r '.params.job_stop // ""' < "$payload")"
 job_plan="$(jq -r '.params.job_plan // ""' < "$payload")"
 job_run="$(jq -r '.params.job_run // ""' < "$payload")"
 job_name="$(require_attr params job_name)"
 
-cd "$source"
+cd "$source/$dir"
 
 nomad --version
 
