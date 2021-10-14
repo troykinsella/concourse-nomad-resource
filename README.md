@@ -23,7 +23,7 @@ resource_types:
   type: docker-image
   source:
     repository: troykinsella/concourse-nomad-resource
-    tag: latest
+    tag: develop
 
 resources:
 - name: nomad
